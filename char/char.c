@@ -1,0 +1,28 @@
+#include <stdio.h>
+
+void print(unsigned char *s)
+{
+	int i;
+
+	for (i = 0; i < 20; i++)
+		printf("%c", s[i]);
+	printf("\n");
+	for (i = 0; i < 20; i++)
+		printf("0x%x ", s[i]);
+	printf("\n\n");
+}
+
+int main(int argc, char *argv[])
+{
+	unsigned char a[20] = {0x74,0x75,0x6e,0x6e,0x65,0x6c,0x5f,0x6b,0x65,0x79};
+	unsigned char b[20] = {0x6d,0x69,0x72,0x72,0x65,0x64};
+	unsigned char c[20] = {0x69,0x6e,0x67,0x72,0x65,0x73,0x73};
+	unsigned char d[20] = {0x67,0x61,0x63,0x74};
+
+	print(a);
+	print(b);
+	print(c);
+	print(d);
+
+	return 0;
+}

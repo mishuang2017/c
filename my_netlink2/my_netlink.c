@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <linux/netlink.h>
+#include <libmnl/libmnl.h>
+#include <linux/genetlink.h>
 #include <unistd.h>
 
 /* Protocol family, consistent in both kernel prog and user prog. */

@@ -18,7 +18,7 @@ int open_netlink(void)
     struct sockaddr_nl addr;
     int group = MYMGRP;
 
-    sock = socket(AF_NETLINK, SOCK_RAW, MYPROTO);
+    sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_GENERIC);
     if (sock < 0) {
         printf("sock < 0.\n");
         return sock;

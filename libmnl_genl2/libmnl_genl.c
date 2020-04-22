@@ -9,7 +9,8 @@
 #include <linux/psample.h>
 #include <string.h>
 
-static int group;
+#define PSAMPLE_FAMILY_NAME	"psample"
+#define PSAMPLE_MCAST_GROUP	"packets"
 
 void print_nlmsghdr(const void *n, size_t len)
 {
@@ -22,6 +23,71 @@ void print_nlmsghdr(const void *n, size_t len)
             printf("\n%04x: ", i);
     }
     printf("\n");
+}
+
+int open_netlink(int group)
+{
+    int sock;
+    struct sockaddr_nl addr;
+
+	printf("%s is called\n", __func__);
+    sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_GENERIC);
+    if (sock < 0) {
+        printf("sock < 0.\n");
+        return sock;
+    }
+
+    memset((void *) &addr, 0, sizeof(addr));
+    addr.nl_family = AF_NETLINK;
+    addr.nl_pid = getpid();
+    /* This doesn't work for some reason. See the setsockopt() below. */
+    /* addr.nl_groups = MYMGRP; */
+
+    if (bind(sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+        printf("bind < 0.\n");
+        return -1;
+    }
+
+    /*
+     * 270 is SOL_NETLINK. See
+     * http://lxr.free-electrons.com/source/include/linux/socket.h?v=4.1#L314
+     * and
+     * http://stackoverflow.com/questions/17732044/
+     */
+    if (setsockopt(sock, 270, NETLINK_ADD_MEMBERSHIP, &group, sizeof(group)) < 0) {
+        printf("setsockopt < 0\n");
+        return -1;
+    }
+
+    return sock;
+}
+
+void read_event(int sock)
+{
+    struct sockaddr_nl nladdr;
+    struct msghdr msg;
+    struct iovec iov;
+    char buffer[65536];
+	struct nlmsghdr *n;
+    int ret;
+    int i;
+
+    iov.iov_base = (void *) buffer;
+    iov.iov_len = sizeof(buffer);
+    msg.msg_name = (void *) &(nladdr);
+    msg.msg_namelen = sizeof(nladdr);
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+
+    printf("Ok, listening.\n");
+    ret = recvmsg(sock, &msg, 0);
+	n = (struct nlmsghdr *) &buffer;
+    if (ret < 0)
+        printf("ret < 0.\n");
+    else {
+        printf("Received message payload: %s\n", NLMSG_DATA((struct nlmsghdr *) &buffer));
+	print_nlmsghdr(n, n->nlmsg_len);
+    }
 }
 
 static int _genl_ctrl_attr_cb(const struct nlattr *attr, void *data)
@@ -94,7 +160,6 @@ static void parse_genl_mc_grps(struct nlattr *nested,
 {
 	struct nlattr *pos;
 	const char *name;
-	unsigned int id;
 
 	mnl_attr_for_each_nested(pos, nested) {
 		struct nlattr *tb[CTRL_ATTR_MCAST_GRP_MAX + 1] = {};
@@ -105,28 +170,20 @@ static void parse_genl_mc_grps(struct nlattr *nested,
 			continue;
 
 		name = mnl_attr_get_str(tb[CTRL_ATTR_MCAST_GRP_NAME]);
-		printf("%s: name: %s\n", __func__, name);
-/* 		if (strcmp(name, group_info->name) != 0) */
-/* 			continue; */
+		if (strcmp(name, group_info->name) != 0)
+			continue;
 
-		id = mnl_attr_get_u32(tb[CTRL_ATTR_MCAST_GRP_ID]);
-		printf("%s: id: %d\n", __func__, id);
+		group_info->id = mnl_attr_get_u32(tb[CTRL_ATTR_MCAST_GRP_ID]);
 	}
 }
 
 static int data_cb(const struct nlmsghdr *nlh, void *data)
 {
+	struct group_info *group_info = (struct group_info *) data;
 	struct genlmsghdr *genl = mnl_nlmsg_get_payload(nlh);
 	int err;
 	int ret = MNL_CB_OK;
-	ssize_t payload_len;
-	pid_t pid = -1;
-	struct sockaddr_storage *remote_addr = NULL;
 
-	print_nlmsghdr(nlh, nlh->nlmsg_len);
-	printf("nlh->nlmsg_type: %d\n", nlh->nlmsg_type);
-
-/* 	struct nlattr *tb[PSAMPLE_ATTR_MAX] = {}; */
         struct nlattr *tb[CTRL_ATTR_MAX+1] = {};
 
         err = mnl_attr_parse(nlh, sizeof(*genl), _genl_ctrl_attr_cb, tb);
@@ -138,27 +195,23 @@ static int data_cb(const struct nlmsghdr *nlh, void *data)
             printf("family_name: %s\n", mnl_attr_get_str(tb[CTRL_ATTR_FAMILY_NAME]));
         }
         if (tb[CTRL_ATTR_MCAST_GROUPS]) {
-		struct group_info groups[3];
-		parse_genl_mc_grps(tb[CTRL_ATTR_MCAST_GROUPS], groups);
+		parse_genl_mc_grps(tb[CTRL_ATTR_MCAST_GROUPS], group_info);
         }
 }
 
 int main(int argc, char *argv[])
 {
+	struct group_info group_info = {
+		.name = PSAMPLE_MCAST_GROUP,
+		.id = 0};
+	char buf[MNL_SOCKET_BUFFER_SIZE];
+	struct genlmsghdr *genl;
 	struct mnl_socket *nl;
 	struct nlmsghdr *nlh;
-	struct genlmsghdr *genl;
-	int hdrsiz;
 	unsigned int seq;
-
-	char buf[MNL_SOCKET_BUFFER_SIZE];
+	int hdrsiz;
+	int nls;
 	int ret;
-
-	if (argc != 2) {
-		printf("%s [group]\n", argv[0]);
-		exit(EXIT_FAILURE);
-	}
-	group = atoi(argv[1]);
 
 	nlh = mnl_nlmsg_put_header(buf);
 	nlh->nlmsg_type = GENL_ID_CTRL;
@@ -168,11 +221,10 @@ int main(int argc, char *argv[])
 	hdrsiz = sizeof (struct genlmsghdr);
 	genl = mnl_nlmsg_put_extra_header(nlh, hdrsiz);
 	genl->cmd = CTRL_CMD_GETFAMILY;
-	genl->version = 2;
+	genl->version = 1;
 
 	mnl_attr_put_u32(nlh, CTRL_ATTR_FAMILY_ID, GENL_ID_CTRL);
-	mnl_attr_put_strz(nlh , CTRL_ATTR_FAMILY_NAME, "psample") ;
-	printf("nlh->nlmsg_len: %d\n", nlh->nlmsg_len);
+	mnl_attr_put_strz(nlh , CTRL_ATTR_FAMILY_NAME, PSAMPLE_FAMILY_NAME) ;
 
 	nl = mnl_socket_open(NETLINK_GENERIC);
 	if (nl == NULL) {
@@ -190,17 +242,11 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	printf("before\n");
 	ret = mnl_socket_recvfrom(nl, buf, sizeof(buf));
-	printf("after, %d\n", ret);
 	while (ret > 0) {
-		ret = mnl_cb_run(buf, ret, 0, 0, data_cb, NULL);
-		if (ret <= 0) {
-			printf("mnl_cb_run, %d\n", ret);
+		ret = mnl_cb_run(buf, ret, 0, 0, data_cb, &group_info);
+		if (ret <= 0)
 			break;
-		}
-		ret = mnl_socket_recvfrom(nl, buf, sizeof(buf));
-		printf("ret, %d\n", ret);
 	}
 	if (ret == -1) {
 		perror("error");
@@ -208,6 +254,17 @@ int main(int argc, char *argv[])
 	}
 
 	mnl_socket_close(nl);
+
+	if (!group_info.id) {
+		perror("can't get psample mcast group id");
+		exit(EXIT_FAILURE);
+	}
+	nls = open_netlink(group_info.id);
+	if (nls < 0)
+		return nls;
+
+	while (1)
+		read_event(nls);
 
 	return 0;
 }

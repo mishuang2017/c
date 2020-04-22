@@ -168,10 +168,10 @@ static int data_cb(const struct nlmsghdr *nlh, void *data)
 {
     struct group_info *group_info = (struct group_info *) data;
     struct genlmsghdr *genl = mnl_nlmsg_get_payload(nlh);
-        struct nlattr *tb[CTRL_ATTR_MAX+1] = {};
+    struct nlattr *tb[CTRL_ATTR_MAX+1] = {};
 
-        mnl_attr_parse(nlh, sizeof (*genl), _genl_ctrl_attr_cb, tb);
-        if (tb[CTRL_ATTR_MCAST_GROUPS])
+    mnl_attr_parse(nlh, sizeof (*genl), _genl_ctrl_attr_cb, tb);
+    if (tb[CTRL_ATTR_MCAST_GROUPS])
         parse_genl_mc_grps(tb[CTRL_ATTR_MCAST_GROUPS], group_info);
 }
 

@@ -73,6 +73,7 @@ void read_psample_netlink(int sock)
     struct nlattr *psample;
     int nla_len;
     int ifindex;
+    int pkt_len;
 
     iov.iov_base = (void *) buffer;
     iov.iov_len = sizeof (buffer);
@@ -98,13 +99,24 @@ void read_psample_netlink(int sock)
         if (nla->nla_type == PSAMPLE_ATTR_DATA) {
             printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
             printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
-            memcpy(skb, mnl_attr_get_str(nla), nla_len);
-/*             print_nlmsghdr(skb, nla_len); */
+            pkt_len = nla_len - sizeof (struct nlattr);
+            memcpy(skb, mnl_attr_get_str(nla), pkt_len);
+            print_nlmsghdr(skb, nla_len);
         } else if (nla->nla_type == PSAMPLE_ATTR_IIFINDEX) {
             printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
             printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
             ifindex = mnl_attr_get_u16(nla);
             printf("ifindex: %d\n", ifindex);
+        } else if (nla->nla_type == PSAMPLE_ATTR_GROUP_SEQ) {
+            printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
+            printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
+            ifindex = mnl_attr_get_u32(nla);
+            printf("group seq: %d\n", ifindex);
+        } else if (nla->nla_type == PSAMPLE_ATTR_SAMPLE_GROUP) {
+            printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
+            printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
+            ifindex = mnl_attr_get_u32(nla);
+            printf("group: %d\n", ifindex);
         } else {
             printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
             printf("%d: nla->nla_len = %d\n", i, nla->nla_len);

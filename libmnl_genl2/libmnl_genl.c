@@ -8,6 +8,14 @@
 #include <linux/psample.h>
 #include <string.h>
 
+#define GENLMSG_DATA(glh)       ((void*)(((char*)glh) + GENL_HDRLEN))
+#define NLA_DATA(nla)           ((void *)((char*)(nla) + NLA_HDRLEN))
+#define NLA_NEXT(nla,len)       ((len) -= NLA_ALIGN((nla)->nla_len), \
+                                      (struct nlattr*)(((char*)(nla)) + NLA_ALIGN((nla)->nla_len)))
+#define NLA_OK(nla,len)         ((len) >= (int)sizeof(struct nlattr) && \
+                                    (nla)->nla_len >= sizeof(struct nlattr) && \
+                                    (nla)->nla_len <= (len))
+
 void print_nlmsghdr(const void *n, size_t len)
 {
     int i = 0;
@@ -52,13 +60,19 @@ int open_psample_netlink(int group)
 void read_psample_netlink(int sock)
 {
     char buffer[MNL_SOCKET_BUFFER_SIZE];
+    char skb[MNL_SOCKET_BUFFER_SIZE];
     struct sockaddr_nl nladdr;
     struct genlmsghdr *ghdr;
-    struct nlmsghdr *n;
+    struct nlattr *nla;
+    struct nlmsghdr *nlh;
     struct msghdr msg;
     struct iovec iov;
     int ret;
     int i;
+
+    struct nlattr *psample;
+    int nla_len;
+    int ifindex;
 
     iov.iov_base = (void *) buffer;
     iov.iov_len = sizeof (buffer);
@@ -72,10 +86,30 @@ void read_psample_netlink(int sock)
         perror("recvmsg");
         exit(EXIT_FAILURE);
     }
-    n = (struct nlmsghdr *) &buffer;
-    print_nlmsghdr(n, n->nlmsg_len);
-    ghdr = (void *)n + sizeof (struct nlmsghdr);
+    nlh = (struct nlmsghdr *) &buffer;
+
+    ghdr = (struct genlmsghdr *)NLMSG_DATA(nlh);
     printf("ghdr->cmd: %d\n", ghdr->cmd);
+    nla = (struct nlattr *)GENLMSG_DATA(ghdr);
+    nla_len = nlh->nlmsg_len - GENL_HDRLEN - sizeof (struct nlmsghdr);
+    printf("nla_len: %d\n", nla_len);
+
+    for (i = 0; NLA_OK(nla, nla_len); nla = NLA_NEXT(nla, nla_len), ++i) {
+        if (nla->nla_type == PSAMPLE_ATTR_DATA) {
+            printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
+            printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
+            memcpy(skb, mnl_attr_get_str(nla), nla_len);
+/*             print_nlmsghdr(skb, nla_len); */
+        } else if (nla->nla_type == PSAMPLE_ATTR_IIFINDEX) {
+            printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
+            printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
+            ifindex = mnl_attr_get_u16(nla);
+            printf("ifindex: %d\n", ifindex);
+        } else {
+            printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
+            printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
+        }
+    }
 }
 
 static int _genl_ctrl_attr_cb(const struct nlattr *attr, void *data)
@@ -220,7 +254,7 @@ int main(int argc, char *argv[])
 
     ret = mnl_socket_recvfrom(nl, buf, sizeof (buf));
     while (ret > 0) {
-        ret = mnl_cb_run(buf, ret, 0, 0, data_cb, &group_info);
+        ret = mnl_cb_run(buf, ret, seq, 0, data_cb, &group_info);
         if (ret <= 0)
             break;
     }

@@ -1,4 +1,3 @@
-/* This example is placed in the public domain. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -8,9 +7,6 @@
 #include <linux/genetlink.h>
 #include <linux/psample.h>
 #include <string.h>
-
-#define PSAMPLE_FAMILY_NAME "psample"
-#define PSAMPLE_GROUP_NAME  "packets"
 
 void print_nlmsghdr(const void *n, size_t len)
 {
@@ -57,6 +53,7 @@ void read_psample_netlink(int sock)
 {
     char buffer[MNL_SOCKET_BUFFER_SIZE];
     struct sockaddr_nl nladdr;
+    struct genlmsghdr *ghdr;
     struct nlmsghdr *n;
     struct msghdr msg;
     struct iovec iov;
@@ -77,6 +74,8 @@ void read_psample_netlink(int sock)
     }
     n = (struct nlmsghdr *) &buffer;
     print_nlmsghdr(n, n->nlmsg_len);
+    ghdr = (void *)n + sizeof (struct nlmsghdr);
+    printf("ghdr->cmd: %d\n", ghdr->cmd);
 }
 
 static int _genl_ctrl_attr_cb(const struct nlattr *attr, void *data)
@@ -179,7 +178,7 @@ static int data_cb(const struct nlmsghdr *nlh, void *data)
 int main(int argc, char *argv[])
 {
     struct group_info group_info = {
-        .name = PSAMPLE_GROUP_NAME,
+        .name = PSAMPLE_NL_MCGRP_SAMPLE_NAME,
         .id = 0};
     char buf[MNL_SOCKET_BUFFER_SIZE];
     struct genlmsghdr *genl;
@@ -201,7 +200,7 @@ int main(int argc, char *argv[])
     genl->version = 1;
 
     mnl_attr_put_u32(nlh, CTRL_ATTR_FAMILY_ID, GENL_ID_CTRL);
-    mnl_attr_put_strz(nlh , CTRL_ATTR_FAMILY_NAME, PSAMPLE_FAMILY_NAME) ;
+    mnl_attr_put_strz(nlh , CTRL_ATTR_FAMILY_NAME, PSAMPLE_GENL_NAME) ;
 
     nl = mnl_socket_open(NETLINK_GENERIC);
     if (nl == NULL) {

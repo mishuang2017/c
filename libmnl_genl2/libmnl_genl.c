@@ -117,6 +117,11 @@ void read_psample_netlink(int sock)
             printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
             ifindex = mnl_attr_get_u32(nla);
             printf("group: %d\n", ifindex);
+        } else if (nla->nla_type == PSAMPLE_ATTR_SAMPLE_RATE) {
+            printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
+            printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
+            ifindex = mnl_attr_get_u32(nla);
+            printf("sample_rate: %d\n", ifindex);
         } else {
             printf("%d: nla->nla_type = %d\t", i, nla->nla_type);
             printf("%d: nla->nla_len = %d\n", i, nla->nla_len);
